@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Stillness</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@200;300;400&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main class="wrap">
+  <header class="top">
+    <h1>Stillness</h1>
+    <p>&ldquo;Be STILL before the Lord and wait patiently for Him&rdquo; - Psalm 37:7</p>
+    <div class="acct" id="acct" hidden>
+      <span id="acctEmail"></span>
+      <button type="button" class="link" id="logout">Log out</button>
+    </div>
+  </header>
+
+  <p class="hint" id="boot">Loading&hellip;</p>
+
+  <!-- setup needed -->
+  <section class="card" id="setup" hidden>
+    <h2>Setup needed</h2>
+    <p class="hint setup" id="setupText"></p>
+  </section>
+
+  <!-- log in / create account -->
+  <section class="card auth" id="auth" aria-labelledby="authTitle" hidden>
+    <h2 id="authTitle">Log in</h2>
+    <form id="authForm" novalidate>
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password">
+        <p class="hint" id="pwHint" hidden>At least 8 characters.</p>
+      </div>
+      <button type="submit" class="start" id="authSubmit">Log in</button>
+    </form>
+    <p class="msg" id="authMsg" role="status" aria-live="polite"></p>
+    <div class="auth-links">
+      <button type="button" class="link" id="authToggle">Create an account</button>
+      <button type="button" class="link" id="forgot">Forgot password?</button>
+    </div>
+  </section>
+
+  <!-- set a new password after a reset email -->
+  <section class="card auth" id="recover" aria-labelledby="recTitle" hidden>
+    <h2 id="recTitle">Choose a new password</h2>
+    <form id="recForm" novalidate>
+      <div class="field">
+        <label for="newPassword">New password</label>
+        <input id="newPassword" type="password" autocomplete="new-password">
+        <p class="hint">At least 8 characters.</p>
+      </div>
+      <button type="submit" class="start" id="recSubmit">Save password</button>
+    </form>
+    <p class="msg" id="recMsg" role="status" aria-live="polite"></p>
+  </section>
+
+  <!-- the app -->
+  <div id="app" hidden>
+    <section class="card" id="home" aria-labelledby="monthTitle">
+      <div class="cal-head">
+        <button type="button" class="nav" id="prev" aria-label="Previous month">&#8249;</button>
+        <h2 id="monthTitle"></h2>
+        <button type="button" class="tdy" id="goToday">Today</button>
+        <button type="button" class="nav" id="next" aria-label="Next month">&#8250;</button>
+      </div>
+      <p class="summary" id="summary"></p>
+      <div class="dows" aria-hidden="true"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+      <div class="cal" id="cal"></div>
+      <div class="legend" aria-hidden="true">
+        <span><i class="sw d"></i>QT done</span>
+        <span><i class="sw t"></i>Notes, not marked done</span>
+      </div>
+      <button type="button" class="start" id="startToday">Open today&rsquo;s QT</button>
+    </section>
+
+    <section class="card" id="day" aria-labelledby="dayTitle" hidden>
+      <button type="button" class="back" id="back">&larr; Calendar</button>
+      <div class="day-head">
+        <h2 id="dayTitle"></h2>
+        <button type="button" class="tog" id="doneBtn" aria-pressed="false">Mark QT done</button>
+      </div>
+      <div class="field">
+        <label for="passage">Passage</label>
+        <input id="passage" type="text" maxlength="80" placeholder="e.g. Genesis 1:1-5" autocomplete="off">
+        <div class="su">
+          <button type="button" class="link" id="suUse" hidden></button>
+          <a class="link" id="suLink" href="https://qt.swim.org/user_utf/dailybibleeng/user_print_web.php" target="_blank" rel="noopener">Open today&rsquo;s SU reading</a>
+          <a class="link" id="csbLink" target="_blank" rel="noopener" hidden>Read this passage in the CSB</a>
+        </div>
+        <p class="hint" id="suNote" hidden>The SU site only shows the current day, so past days will open today&rsquo;s reading.</p>
+      </div>
+      <div class="qs" id="qs"></div>
+      <p class="msg" id="msg" aria-live="polite"></p>
+    </section>
+
+    <p class="sync" id="sync"></p>
+  </div>
+</main>
+
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="app.js"></script>
+</body>
+</html>
