@@ -260,6 +260,7 @@ function renderDay(){
   setPassageLink();
   renderSu();
   renderQs(mapQA(e.qa));
+  renderShare();
 }
 function refresh(force){
   renderCal();
@@ -267,16 +268,20 @@ function refresh(force){
 }
 
 /* ================= calendar and day navigation ================= */
-var isOpen=false;
-function show(o){
-  isOpen=o;$('home').hidden=o;$('day').hidden=!o;
+var isOpen=false,screenName='home';
+function screen(name){
+  screenName=name;isOpen=(name==='day');
+  ['home','day','groups','group'].forEach(function(v){$(v).hidden=(v!==name)});
+  $('tabCal').setAttribute('aria-current',(name==='home'||name==='day')?'page':'false');
+  $('tabGroups').setAttribute('aria-current',(name==='groups'||name==='group')?'page':'false');
   window.scrollTo(0,0);
 }
+function show(o){screen(o?'day':'home')}
 function selectDay(k,openIt){
   sel=k;$('msg').textContent='';
   var d=parse(k);view={y:d.getFullYear(),m:d.getMonth()};
   refresh(true);
-  if(openIt) show(true);
+  if(openIt){show(true);loadMyShares()}
 }
 function markDoneButton(){var b=$('doneBtn');b.setAttribute('aria-pressed','true');b.textContent='QT done'}
 
@@ -422,15 +427,17 @@ function startApp(user){
   sel=todayKey();curDay=sel;
   var d=parse(sel);view={y:d.getFullYear(),m:d.getMonth()};
   $('msg').textContent='';
-  show(false);
+  screen('home');
   showView('app');
   renderCal();
   startLoad(true);
+  loadGroups();
 }
 function stopApp(){
   uid=null;email='';loadToken++;
   state={days:{}};dirty.clear();ver={};
   clearTimeout(saveTimer);clearTimeout(retryTimer);
+  resetGroups();
   $('password').value='';
   setStatus('');
 }
@@ -449,6 +456,319 @@ function handleSession(session,event){
   }
 }
 
+
+/* ================= groups ================= */
+var profile=null,myGroups=[],groupsReady=false,curGroup=null,shareRows={},editingName=false,shareKey='';
+function fmtCode(c){c=String(c||'');return c.length===10?c.slice(0,5)+'-'+c.slice(5):c}
+function setTabs(){$('tabs').hidden=!(uid&&groupsReady)}
+function armed(btn,idle,sure,fn){
+  var on=false,t=0;
+  btn.textContent=idle;
+  btn.onclick=function(){
+    if(!on){on=true;btn.textContent=sure;clearTimeout(t);t=setTimeout(function(){on=false;btn.textContent=idle},4000);return}
+    clearTimeout(t);on=false;btn.textContent=idle;fn();
+  };
+}
+function resetGroups(){
+  profile=null;myGroups=[];groupsReady=false;curGroup=null;shareRows={};editingName=false;shareKey='';
+  $('glist').innerHTML='';$('feed').innerHTML='';$('members').innerHTML='';
+  $('reflection').value='';$('shareGroup').innerHTML='';
+  say('gmsg','');say('gerr','');say('shareMsg','');
+  setTabs();
+}
+async function loadGroups(){
+  if(!uid||!sb) return;
+  var my=uid;
+  try{
+    var p=await sb.from('profiles').select('id,display_name').eq('id',my).maybeSingle();
+    if(p.error) throw p.error;
+    var m=await sb.from('group_members').select('group_id,role,show_in_count').eq('user_id',my);
+    if(m.error) throw m.error;
+    var rows=m.data||[],ids=rows.map(function(r){return r.group_id}),gs=[];
+    if(ids.length){
+      var g=await sb.from('groups').select('id,name,invite_code').in('id',ids);
+      if(g.error) throw g.error;
+      gs=g.data||[];
+    }
+    if(uid!==my) return;
+    var byId={};gs.forEach(function(x){byId[x.id]=x});
+    profile=p.data||null;
+    myGroups=rows.map(function(r){
+      var x=byId[r.group_id];
+      return x?{id:x.id,name:x.name,code:x.invite_code,role:r.role,inCount:r.show_in_count!==false}:null;
+    }).filter(Boolean).sort(function(a,b){return a.name.localeCompare(b.name)});
+    groupsReady=true;
+    setTabs();renderGroups();renderShare();
+    if(curGroup){
+      curGroup=myGroups.filter(function(x){return x.id===curGroup.id})[0]||null;
+      if(!curGroup&&screenName==='group') screen('groups');
+    }
+  }catch(err){
+    if(uid!==my) return;
+    groupsReady=false;setTabs();
+  }
+}
+function renderGroups(){
+  var host=$('glist');host.innerHTML='';
+  myGroups.forEach(function(g){
+    var li=document.createElement('li'),b=document.createElement('button');
+    b.type='button';b.className='glink';b.dataset.id=g.id;b.textContent=g.name;
+    li.appendChild(b);host.appendChild(li);
+  });
+  $('gempty').hidden=myGroups.length>0;
+  $('nameBox').hidden=!!profile&&!editingName;
+  $('nameLine').hidden=!profile||editingName;
+  $('gforms').hidden=!profile;
+  if(profile) $('nameText').textContent=profile.display_name;
+  if(!$('nameBox').hidden&&document.activeElement!==$('dname')) $('dname').value=profile?profile.display_name:'';
+}
+async function saveName(){
+  var n=$('dname').value.trim();
+  if(!n||n.length>30){say('gmsg','Enter a name of up to 30 characters.',true);return}
+  say('gmsg','Saving…');
+  var r=await sb.from('profiles').upsert({id:uid,display_name:n},{onConflict:'id'});
+  if(r.error){say('gmsg',friendly(r.error),true);return}
+  profile={id:uid,display_name:n};editingName=false;say('gmsg','');
+  renderGroups();
+}
+async function createGroup(){
+  var n=$('gname').value.trim();
+  if(!n){say('gmsg','Give the group a name.',true);return}
+  say('gmsg','Creating…');$('createBtn').disabled=true;
+  var r=await sb.rpc('create_group',{group_name:n});
+  $('createBtn').disabled=false;
+  if(r.error){say('gmsg',friendly(r.error),true);return}
+  $('gname').value='';say('gmsg','');
+  await loadGroups();
+  if(r.data&&r.data.id) openGroup(r.data.id);
+}
+async function joinGroup(){
+  var c=$('gcode').value.trim();
+  if(!c){say('gmsg','Enter the invite code.',true);return}
+  say('gmsg','Joining…');$('joinBtn').disabled=true;
+  var r=await sb.rpc('join_group',{code:c});
+  $('joinBtn').disabled=false;
+  if(r.error){say('gmsg',friendly(r.error),true);return}
+  $('gcode').value='';say('gmsg','');
+  await loadGroups();
+  if(r.data&&r.data.id) openGroup(r.data.id);
+}
+
+/* one group */
+async function openGroup(id){
+  var g=myGroups.filter(function(x){return x.id===id})[0];
+  if(!g) return;
+  curGroup=g;screen('group');say('gerr','');
+  $('gtitle').textContent=g.name;
+  $('gcodeText').textContent=fmtCode(g.code);
+  $('inCount').checked=g.inCount;
+  $('gleave').hidden=(g.role==='owner');
+  $('gdelete').hidden=(g.role!=='owner');
+  armed($('gleave'),'Leave group','Tap again to leave',leaveGroup);
+  armed($('gdelete'),'Delete group','Tap again to delete for everyone',deleteGroup);
+  $('feed').innerHTML='';$('members').innerHTML='';$('quiet').textContent='';$('feedEmpty').hidden=true;
+  await refreshGroup();
+}
+async function refreshGroup(){
+  var g=curGroup;
+  if(!g||!uid) return;
+  try{
+    var res=await Promise.all([
+      sb.from('group_members').select('user_id,role').eq('group_id',g.id),
+      sb.from('shares').select('id,user_id,day,passage,body,created_at').eq('group_id',g.id)
+        .order('day',{ascending:false}).order('created_at',{ascending:false}).limit(60),
+      sb.rpc('group_count',{gid:g.id,d:todayKey()})
+    ]);
+    if(res[0].error) throw res[0].error;
+    if(res[1].error) throw res[1].error;
+    var members=res[0].data||[],posts=res[1].data||[],ids={};
+    members.forEach(function(x){ids[x.user_id]=1});
+    posts.forEach(function(x){ids[x.user_id]=1});
+    var names={};
+    var idList=Object.keys(ids);
+    if(idList.length){
+      var pr=await sb.from('profiles').select('id,display_name').in('id',idList);
+      if(pr.error) throw pr.error;
+      (pr.data||[]).forEach(function(x){names[x.id]=x.display_name});
+    }
+    if(curGroup!==g||!uid) return;
+    renderGroup(members,posts,names,res[2].error?null:res[2].data);
+  }catch(err){
+    if(curGroup===g) say('gerr','Could not load this group. Check your connection and try again.',true);
+  }
+}
+function renderGroup(members,posts,names,count){
+  var g=curGroup,feed=$('feed');
+  feed.innerHTML='';
+  posts.forEach(function(p){
+    var a=document.createElement('article');a.className='post';
+    var head=document.createElement('div');head.className='post-head';
+    var who=document.createElement('span');who.className='who';
+    who.textContent=p.user_id===uid?'You':(names[p.user_id]||'Someone');
+    var when=document.createElement('span');when.className='when';
+    when.textContent=fmtShort.format(parse(String(p.day).slice(0,10)));
+    head.appendChild(who);head.appendChild(when);a.appendChild(head);
+    if(p.passage){
+      var pp=document.createElement('p');pp.className='post-pass';
+      var l=document.createElement('a');l.href=csbUrl(p.passage);l.target='_blank';l.rel='noopener';l.textContent=p.passage;
+      pp.appendChild(l);a.appendChild(pp);
+    }
+    var body=document.createElement('p');body.className='post-body';body.textContent=p.body;a.appendChild(body);
+    if(p.user_id===uid){
+      var rm=document.createElement('button');rm.type='button';rm.className='link';
+      armed(rm,'Remove','Tap again to remove',function(){removeShare(p.id)});
+      a.appendChild(rm);
+    }
+    feed.appendChild(a);
+  });
+  $('feedEmpty').hidden=posts.length>0;
+
+  var list=$('members');list.innerHTML='';
+  members.slice().sort(function(a,b){
+    if(a.role!==b.role) return a.role==='owner'?-1:1;
+    return (names[a.user_id]||'').localeCompare(names[b.user_id]||'');
+  }).forEach(function(m){
+    var li=document.createElement('li');
+    var n=document.createElement('span');
+    n.textContent=(names[m.user_id]||'Someone')+(m.user_id===uid?' (you)':'');
+    var sub=document.createElement('span');sub.className='sub';
+    if(m.role==='owner'){sub.textContent='started the group';li.appendChild(n);li.appendChild(sub)}
+    else{
+      li.appendChild(n);
+      if(g.role==='owner'&&m.user_id!==uid){
+        var rm=document.createElement('button');rm.type='button';rm.className='link';
+        armed(rm,'Remove','Tap again to remove',function(){removeMember(m.user_id)});
+        li.appendChild(rm);
+      }
+    }
+    list.appendChild(li);
+  });
+
+  /* The quiet count: two numbers, no names, never shown when nobody has done theirs. */
+  var q='';
+  if(count&&count.counted>=3&&count.done>0) q=count.done+' of '+count.counted+' have had their QT today.';
+  $('quiet').textContent=q;
+}
+async function removeShare(id){
+  var r=await sb.from('shares').delete().eq('id',id).eq('user_id',uid);
+  if(r.error){say('gerr',friendly(r.error),true);return}
+  shareRows={};refreshGroup();loadMyShares();
+}
+async function removeMember(userId){
+  var g=curGroup;if(!g) return;
+  var r=await sb.from('group_members').delete().eq('group_id',g.id).eq('user_id',userId);
+  if(r.error){say('gerr',friendly(r.error),true);return}
+  refreshGroup();
+}
+async function leaveGroup(){
+  var g=curGroup;if(!g) return;
+  var r=await sb.from('shares').delete().eq('group_id',g.id).eq('user_id',uid);
+  if(!r.error) r=await sb.from('group_members').delete().eq('group_id',g.id).eq('user_id',uid);
+  if(r.error){say('gerr',friendly(r.error),true);return}
+  curGroup=null;shareRows={};
+  await loadGroups();screen('groups');
+}
+async function deleteGroup(){
+  var g=curGroup;if(!g) return;
+  var r=await sb.from('groups').delete().eq('id',g.id);
+  if(r.error){say('gerr',friendly(r.error),true);return}
+  curGroup=null;shareRows={};
+  await loadGroups();screen('groups');
+}
+async function setInCount(on){
+  var g=curGroup;if(!g) return;
+  var r=await sb.from('group_members').update({show_in_count:on}).eq('group_id',g.id).eq('user_id',uid);
+  if(r.error){say('gerr',friendly(r.error),true);$('inCount').checked=!on;return}
+  g.inCount=on;refreshGroup();
+}
+function copyCode(){
+  var g=curGroup;if(!g) return;
+  var done=function(ok){$('gcopy').textContent=ok?'Copied':'Select and copy';setTimeout(function(){$('gcopy').textContent='Copy'},2000)};
+  try{
+    navigator.clipboard.writeText(fmtCode(g.code)).then(function(){done(true)},function(){selectCode();done(false)});
+  }catch(e){selectCode();done(false)}
+}
+function selectCode(){
+  try{var r=document.createRange();r.selectNodeContents($('gcodeText'));var s=window.getSelection();s.removeAllRanges();s.addRange(r)}catch(e){}
+}
+
+/* sharing from the day page */
+function renderShare(){
+  var box=$('share'),show=groupsReady&&profile&&myGroups.length>0;
+  box.hidden=!show;
+  if(!show) return;
+  var sel_=$('shareGroup'),keep=sel_.value;
+  var ids=myGroups.map(function(g){return g.id}).join(',');
+  if(sel_.dataset.ids!==ids){
+    sel_.innerHTML='';
+    myGroups.forEach(function(g){var o=document.createElement('option');o.value=g.id;o.textContent=g.name;sel_.appendChild(o)});
+    sel_.dataset.ids=ids;
+    if(keep&&myGroups.some(function(g){return g.id===keep})) sel_.value=keep;
+  }
+  var k=sel+'|'+sel_.value;
+  if(k!==shareKey){shareKey=k;fillReflection(true)}else fillReflection(false);
+}
+function fillReflection(replace){
+  var gid=$('shareGroup').value,has=shareRows[gid]!==undefined;
+  if(replace&&document.activeElement!==$('reflection')) $('reflection').value=has?shareRows[gid]:'';
+  $('shareBtn').textContent=has?'Update':'Share';
+  $('unshareBtn').hidden=!has;
+}
+async function loadMyShares(){
+  if(!groupsReady||!uid) return;
+  var day=sel,my=uid;
+  shareRows={};say('shareMsg','');
+  $('reflection').value='';
+  shareKey=sel+'|'+$('shareGroup').value;
+  fillReflection(false);
+  var r=await sb.from('shares').select('group_id,body').eq('user_id',my).eq('day',day);
+  if(r.error||uid!==my||sel!==day) return;
+  (r.data||[]).forEach(function(x){shareRows[x.group_id]=x.body});
+  fillReflection(true);
+}
+async function shareNow(){
+  var gid=$('shareGroup').value,body=$('reflection').value.trim();
+  var g=myGroups.filter(function(x){return x.id===gid})[0];
+  if(!g){return}
+  if(!body){say('shareMsg','Write a few words first.',true);return}
+  $('shareBtn').disabled=true;say('shareMsg','Sharing…');
+  var e=state.days[sel]||{};
+  var r=await sb.from('shares').upsert({
+    group_id:gid,user_id:uid,day:sel,passage:e.p||null,body:body.slice(0,600),updated_at:new Date().toISOString()
+  },{onConflict:'group_id,user_id,day'});
+  $('shareBtn').disabled=false;
+  if(r.error){say('shareMsg',friendly(r.error),true);return}
+  shareRows[gid]=body;fillReflection(false);
+  say('shareMsg','Shared with '+g.name+'.');
+}
+async function unshareNow(){
+  var gid=$('shareGroup').value;
+  var g=myGroups.filter(function(x){return x.id===gid})[0];
+  var r=await sb.from('shares').delete().eq('group_id',gid).eq('user_id',uid).eq('day',sel);
+  if(r.error){say('shareMsg',friendly(r.error),true);return}
+  delete shareRows[gid];$('reflection').value='';fillReflection(false);
+  say('shareMsg','Removed from '+(g?g.name:'the group')+'.');
+}
+
+function wireGroups(){
+  $('tabCal').addEventListener('click',function(){screen('home');renderCal()});
+  $('tabGroups').addEventListener('click',function(){screen('groups');renderGroups();loadGroups()});
+  $('glist').addEventListener('click',function(ev){
+    var b=ev.target.closest('.glink');if(b) openGroup(b.dataset.id);
+  });
+  $('gback').addEventListener('click',function(){curGroup=null;screen('groups');renderGroups()});
+  $('nameSave').addEventListener('click',saveName);
+  $('dname').addEventListener('keydown',function(ev){if(ev.key==='Enter'){ev.preventDefault();saveName()}});
+  $('nameChange').addEventListener('click',function(){editingName=true;renderGroups();$('dname').focus()});
+  $('createForm').addEventListener('submit',function(ev){ev.preventDefault();createGroup()});
+  $('joinForm').addEventListener('submit',function(ev){ev.preventDefault();joinGroup()});
+  $('gcopy').addEventListener('click',copyCode);
+  $('inCount').addEventListener('change',function(){setInCount(this.checked)});
+  $('shareGroup').addEventListener('change',function(){shareKey=sel+'|'+this.value;fillReflection(true);say('shareMsg','')});
+  $('shareBtn').addEventListener('click',shareNow);
+  $('unshareBtn').addEventListener('click',unshareNow);
+}
+
 /* ================= tick and refocus ================= */
 function tick(){
   if(!uid) return;
@@ -464,6 +784,8 @@ function wireGlobal(){
     if(document.hidden){if(dirty.size) flush();return}
     tick();
     if(uid&&!dirty.size&&!flushing&&!isTyping()) startLoad(false);
+    if(uid&&!groupsReady) loadGroups();
+    if(uid&&screenName==='group'&&!isTyping()) refreshGroup();
   });
   window.addEventListener('pagehide',function(){if(dirty.size) flush()});
   window.addEventListener('beforeunload',function(ev){
@@ -476,7 +798,7 @@ function boot(){
   var problem=configProblem();
   if(problem){$('setupText').textContent=problem;showView('setup');return}
   sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
-  wireApp();wireAuth();wireGlobal();setMode('login');
+  wireApp();wireGroups();wireAuth();wireGlobal();setMode('login');
   sb.auth.onAuthStateChange(function(event,session){
     /* do not call other Supabase methods directly inside this callback */
     setTimeout(function(){handleSession(session,event)},0);
