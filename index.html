@@ -67,6 +67,11 @@
 
   <!-- the app -->
   <div id="app" hidden>
+    <nav class="tabs" id="tabs" aria-label="Sections" hidden>
+      <button type="button" class="tab" id="tabCal" aria-current="page">Calendar</button>
+      <button type="button" class="tab" id="tabGroups" aria-current="false">Groups</button>
+    </nav>
+
     <section class="card" id="home" aria-labelledby="monthTitle">
       <div class="cal-head">
         <button type="button" class="nav" id="prev" aria-label="Previous month">&#8249;</button>
@@ -102,6 +107,79 @@
       </div>
       <div class="qs" id="qs"></div>
       <p class="msg" id="msg" aria-live="polite"></p>
+
+      <div class="share" id="share" hidden>
+        <h3>Share a reflection</h3>
+        <p class="hint">Write something short for a group. The responses above stay private. Only what you write here is shared.</p>
+        <div class="field">
+          <label for="shareGroup">Group</label>
+          <select id="shareGroup"></select>
+        </div>
+        <div class="field">
+          <label for="reflection">Reflection</label>
+          <textarea id="reflection" maxlength="600" placeholder="A thought, a line that stayed with you, a prayer&hellip;"></textarea>
+        </div>
+        <div class="row">
+          <button type="button" class="start" id="shareBtn">Share</button>
+          <button type="button" class="link" id="unshareBtn" hidden>Remove from group</button>
+        </div>
+        <p class="msg" id="shareMsg" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section class="card" id="groups" hidden aria-labelledby="groupsTitle">
+      <h2 id="groupsTitle">Groups</h2>
+      <p class="hint">Small circles of friends. Nothing is shown unless you choose to share it.</p>
+      <ul class="glist" id="glist"></ul>
+      <p class="hint" id="gempty">You are not in a group yet.</p>
+
+      <div class="field" id="nameBox" hidden>
+        <label for="dname">What should your friends call you?</label>
+        <input id="dname" type="text" maxlength="30" autocomplete="nickname">
+        <button type="button" class="start" id="nameSave">Save name</button>
+      </div>
+      <p class="hint" id="nameLine" hidden>Friends will see you as <b id="nameText"></b>. <button type="button" class="link" id="nameChange">Change</button></p>
+
+      <div id="gforms" hidden>
+        <form id="createForm" class="field" novalidate>
+          <label for="gname">Start a group</label>
+          <input id="gname" type="text" maxlength="40" placeholder="Group name" autocomplete="off">
+          <button type="submit" class="start" id="createBtn">Create group</button>
+        </form>
+        <form id="joinForm" class="field" novalidate>
+          <label for="gcode">Join with an invite code</label>
+          <input id="gcode" type="text" maxlength="20" placeholder="XXXXX-XXXXX" autocomplete="off" autocapitalize="characters" spellcheck="false">
+          <button type="submit" class="start" id="joinBtn">Join group</button>
+        </form>
+      </div>
+      <p class="msg" id="gmsg" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="card" id="group" hidden aria-labelledby="gtitle">
+      <button type="button" class="back" id="gback">&larr; Groups</button>
+      <h2 id="gtitle"></h2>
+      <div class="gcode">
+        <span class="lbl">Invite code</span>
+        <code id="gcodeText"></code>
+        <button type="button" class="link" id="gcopy">Copy</button>
+      </div>
+      <p class="hint">Anyone with this code can join. Share it only with people you trust.</p>
+
+      <h3>Shared reflections</h3>
+      <div class="feed" id="feed"></div>
+      <p class="hint" id="feedEmpty" hidden>Nothing shared yet. You can share a reflection from the bottom of any day&rsquo;s page.</p>
+
+      <h3>Members</h3>
+      <ul class="members" id="members"></ul>
+
+      <label class="chk"><input type="checkbox" id="inCount"> Include me in the group&rsquo;s quiet daily count</label>
+      <p class="quiet" id="quiet"></p>
+
+      <div class="leave">
+        <button type="button" class="link" id="gleave" hidden>Leave group</button>
+        <button type="button" class="link" id="gdelete" hidden>Delete group</button>
+      </div>
+      <p class="msg" id="gerr" role="status" aria-live="polite"></p>
     </section>
 
     <p class="sync" id="sync"></p>
